@@ -1,0 +1,11 @@
+﻿// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+RWStructuredBuffer<int> Result;
+
+[numthreads(8,8,1)] //2D kernel (8*8)
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    int newID = id.x + id.y * 8;
+    Result[newID] = newID * 2;
+}

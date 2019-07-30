@@ -1,0 +1,57 @@
+﻿// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+uniform int widthGroup;
+uniform RWStructuredBuffer<float3> position : register(u1); //position buffer. 
+uniform RWStructuredBuffer<float3> velocity : register(u2); //velocity buffer
+/*register(u1) and register(u2) mean we're binding the buffers to (global) GPU registers. 
+These type of registers keep their references between different shaders, 
+so we can write to a buffer in one shader and read from the buffer in another shader 
+without needing to involve the CPU with any data exchange.
+*/
+
+// [numthreads(256, 1, 1)] //we simulate only 256 * 1 * 1 objects per kernel which is 1D kernel 
+[numthreads(8, 8, 1)] //we simulate 8 * 8 * 1 objects per kernel which is 2D kernel - this is more optimized but not the best
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    int width = 8 * widthGroup;
+    int index = id.x + id.y * (width);
+    //Total Force
+    float3 tForce = float3(0.0, 0.0, 0.0);
+
+    //Iterate for each objet (node, particules...). NB : this a forloop on 256*256 = 65536 element which drop the FPS to 16-22 fps
+    for(uint i=0; i<width * width; i++){ //set a limit of 65 536‬ object. NB uint are unsigned integer which cannot store negative value and stroe 2× the values of a single int from 0 to 4294967295 (int : –2147483648 to 2147483647)
+ 
+        float dist = distance(position[i], position[index]); //compare the distance between each position and the actual one
+
+        
+        // We'll pretend we're in a 2D universe where g = inverse distance rather than g = inverse distance^2
+		// Otherwise the forces end up to such a range that we'll start having issues with floating point precision.
+		// Plus, with the inverse square law, we'd have to be more careful in tuning the time and size scales etc - otherwise we end up with something extremely unstable.
+        float g = 1.0 / dist * 0.0001;
+
+        //Direction vector. We add 1e-10 to avoid NaN when the dirrection length is 0
+        float3 dir = position[i] - position[index];
+        dir = dir / (length(dir) + 1e-10); //Normalize dir between 1e-10 and 1.0
+
+        float3 force = g * dir * 0.001;
+        if(i != index) //if the index is different of the actual object we update the force. NB try to avoid branching at all cost
+            tForce += force;
+    }
+
+    //Simplified Verlet/leapfrog integration
+    /*
+    The basic idea is to interleave the additions to acceleration, velocity and position, thus leading to a closer approximation of continuous increase rather than 
+    discrete increase to these properties. Normally you would want to keep track of acceleration separately and have forces apply on the acceleration, 
+    but we'll be a little bit lazy and use a simplified version that doesn't need keep tracking of acceleration:
+
+    position = position + velocity * timestep + acceleration/2.0f
+    velocity = velocity + acceleration * timestep
+
+    The reason for the /2.0f is that we're increasing position before increasing velocity; 
+    hence, we're working with the velocity from the last frame. We make up for this by factoring acceleration in twice. 
+    Thus, we are "leaping".
+    */
+    position[index] += velocity[index] + tForce/2.0;
+    velocity[index] += tForce;
+}
