@@ -35,7 +35,7 @@ void CSMain (uint3 id : SV_DispatchThreadID)
         dir = dir / (length(dir) + 1e-10); //Normalize dir between 1e-10 and 1.0
 
         float3 force = g * dir * 0.001;
-        if(i != index) //if the index is different of the actual object we update the force. NB try to avoid branching at all cost
+         if(i != index) //if the index is different of the actual object we update the force. NB try to avoid branching at all cost
             tForce += force;
     }
 
