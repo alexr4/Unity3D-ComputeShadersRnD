@@ -21,8 +21,9 @@ public class T02CSController : MonoBehaviour
         int[] data = new int[8 * 8 * 5 * 5];//Create an array to retreive the data 
         buffer.GetData(data);// Retreive the data
 
+        Debug.Log(data.Length);
         for(int i=0; i<data.Length; i++){
-            Debug.Log(data[i]); //Debug
+            // Debug.Log(data[i]); //Debug
         }
 
         buffer.Release();//Release the buffer for next frame

@@ -1,0 +1,28 @@
+﻿// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+// Create a RenderTexture with enableRandomWrite flag and set it
+// with cs.SetTexture
+uniform RWStructuredBuffer<float3> Result;
+uniform float3 crd;
+uniform float time;
+
+int i3DToi1D(float3 xyz, float3 crd){
+    return (xyz.z * crd.x * crd.y) + (xyz.y * crd.x) + xyz.x;
+}
+
+float3 i1DToi3D(int index, float3 crd){
+    int z = index / (crd.x * crd.y);
+    index -= (z * crd.x * crd.r);
+    int y = index / crd.x;
+    int x = index % crd.x;
+    return float3(x, y, z);
+}
+
+[numthreads(8,8,8)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    int index = i3DToi1D(id, crd);
+    float3 newPosition = float3(id.x, id.y, id.z) * time;
+    Result[index] = newPosition;
+}
