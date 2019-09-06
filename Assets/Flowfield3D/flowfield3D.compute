@@ -6,14 +6,161 @@
 uniform RWStructuredBuffer<float3> Result;
 uniform float3 crd;
 uniform float time;
+uniform float noiseScale;
 
-int i3DToi1D(float3 xyz, float3 crd){
+#define PI    3.14159265358979323846
+#define TWOPI 6.28318530718
+
+//Random and Noise
+#define HASHOFFSET 43758.5453123
+float hash11(in float x){
+    return frac(sin(x) * HASHOFFSET);
+}
+
+float hash21(in float2 xy){
+    return frac(sin(dot(xy.xy, float2(125.9895, 785.233))) * HASHOFFSET);
+}
+
+float hash31(in float3 xyz){
+    return frac(sin(dot(xyz.xyz, float3(125.9895, 785.233, 458.354983))) * HASHOFFSET);
+}
+
+float3 hash33(in float3 xyz){
+	float3 p = float3(dot(xyz, float3(127.1, 311.7,  74.7)),
+			          dot(xyz, float3(269.5, 183.3, 246.1)),
+			          dot(xyz, float3(113.5, 271.9, 124.6)));
+
+	return -1.0 + 2.0 * frac(sin(p) * HASHOFFSET);
+}
+
+// returns 3D value noise (in .x)  and its derivatives (in .yzw)
+// Gradient noise from : https://www.iquilezles.org/www/articles/gradientnoise/gradientnoise.htm
+float4 noised(in float3 xyz)
+{
+    // grid
+    float3 p = floor(xyz);
+    float3 w = frac(xyz);
+    
+    // quintic interpolant
+    float3 u = w*w*w*(w*(w*6.0-15.0)+10.0);
+    float3 du = 30.0*w*w*(w*(w-2.0)+1.0);
+    
+    // gradients
+    float3 ga = hash33(p + float3(0.0,0.0,0.0));
+    float3 gb = hash33(p + float3(1.0,0.0,0.0));
+    float3 gc = hash33(p + float3(0.0,1.0,0.0));
+    float3 gd = hash33(p + float3(1.0,1.0,0.0));
+    float3 ge = hash33(p + float3(0.0,0.0,1.0));
+    float3 gf = hash33(p + float3(1.0,0.0,1.0));
+    float3 gg = hash33(p + float3(0.0,1.0,1.0));
+    float3 gh = hash33(p + float3(1.0,1.0,1.0));
+    
+    // projections
+    float va = dot(ga, w - float3(0.0,0.0,0.0));
+    float vb = dot(gb, w - float3(1.0,0.0,0.0));
+    float vc = dot(gc, w - float3(0.0,1.0,0.0));
+    float vd = dot(gd, w - float3(1.0,1.0,0.0));
+    float ve = dot(ge, w - float3(0.0,0.0,1.0));
+    float vf = dot(gf, w - float3(1.0,0.0,1.0));
+    float vg = dot(gg, w - float3(0.0,1.0,1.0));
+    float vh = dot(gh, w - float3(1.0,1.0,1.0));
+	
+    // interpolation
+    float v = va + 
+              u.x*(vb-va) + 
+              u.y*(vc-va) + 
+              u.z*(ve-va) + 
+              u.x*u.y*(va-vb-vc+vd) + 
+              u.y*u.z*(va-vc-ve+vg) + 
+              u.z*u.x*(va-vb-ve+vf) + 
+              u.x*u.y*u.z*(-va+vb+vc-vd+ve-vf-vg+vh);
+              
+    float3 d = ga + 
+               u.x*(gb-ga) + 
+               u.y*(gc-ga) + 
+               u.z*(ge-ga) + 
+               u.x*u.y*(ga-gb-gc+gd) + 
+               u.y*u.z*(ga-gc-ge+gg) + 
+               u.z*u.x*(ga-gb-ge+gf) + 
+               u.x*u.y*u.z*(-ga+gb+gc-gd+ge-gf-gg+gh) +   
+               du * (float3(vb-va,vc-va,ve-va) + 
+                     u.yzx * float3(va-vb-vc+vd,va-vc-ve+vg,va-vb-ve+vf) + 
+                     u.zxy * float3(va-vb-ve+vf,va-vb-vc+vd,va-vc-ve+vg) + 
+                     u.yzx * u.zxy * (-va+vb+vc-vd+ve-vf-vg+vh));
+                   
+    return float4(v, d);                   
+}
+
+// returns 3D value noise
+float noise(in float3 xyz)
+{
+    // grid
+    float3 p = floor(xyz);
+    float3 w = frac(xyz);
+    
+    // quintic interpolant
+    float3 u = w*w*w*(w*(w*6.0-15.0)+10.0);
+
+    
+    // gradients
+    float3 ga = hash33(p + float3(0.0,0.0,0.0));
+    float3 gb = hash33(p + float3(1.0,0.0,0.0));
+    float3 gc = hash33(p + float3(0.0,1.0,0.0));
+    float3 gd = hash33(p + float3(1.0,1.0,0.0));
+    float3 ge = hash33(p + float3(0.0,0.0,1.0));
+    float3 gf = hash33(p + float3(1.0,0.0,1.0));
+    float3 gg = hash33(p + float3(0.0,1.0,1.0));
+    float3 gh = hash33(p + float3(1.0,1.0,1.0));
+    
+    // projections
+    float va = dot(ga, w - float3(0.0,0.0,0.0));
+    float vb = dot(gb, w - float3(1.0,0.0,0.0));
+    float vc = dot(gc, w - float3(0.0,1.0,0.0));
+    float vd = dot(gd, w - float3(1.0,1.0,0.0));
+    float ve = dot(ge, w - float3(0.0,0.0,1.0));
+    float vf = dot(gf, w - float3(1.0,0.0,1.0));
+    float vg = dot(gg, w - float3(0.0,1.0,1.0));
+    float vh = dot(gh, w - float3(1.0,1.0,1.0));
+	
+    // interpolation
+    return va + 
+           u.x*(vb-va) + 
+           u.y*(vc-va) + 
+           u.z*(ve-va) + 
+           u.x*u.y*(va-vb-vc+vd) + 
+           u.y*u.z*(va-vc-ve+vg) + 
+           u.z*u.x*(va-vb-ve+vf) + 
+           u.x*u.y*u.z*(-va+vb+vc-vd+ve-vf-vg+vh);
+}
+
+float noise(float2 st){
+  float2 ist = floor(st);
+  float2 fst = frac(st);
+
+  //get 4 corners of the pixel
+  float bl = hash21(ist);
+  float br = hash21(ist + float2(1.0, 0.0));
+  float tl = hash21(ist + float2(0.0, 1.0));
+  float tr = hash21(ist + float2(1.0, 1.0));
+
+  //smooth interpolation using cubic function
+  float2 si = fst * fst * (3.0 - 2.0 * fst);
+
+  //mix the four corner to get a noise value
+  return lerp(bl, br, si.x) +
+         (tl - bl) * si.y * (1.0 - si.x) +
+         (tr - br) * si.x * si.y;
+}
+
+
+//Helper index 1D ↔ 3D
+int i3DToi1D(in float3 xyz, in float3 crd){
     return (xyz.z * crd.x * crd.y) + (xyz.y * crd.x) + xyz.x;
 }
 
-float3 i1DToi3D(int index, float3 crd){
+float3 i1DToi3D(in int index, in float3 crd){
     int z = index / (crd.x * crd.y);
-    index -= (z * crd.x * crd.r);
+    index -= (z * crd.x * crd.y);
     int y = index / crd.x;
     int x = index % crd.x;
     return float3(x, y, z);
@@ -22,7 +169,14 @@ float3 i1DToi3D(int index, float3 crd){
 [numthreads(8,8,8)]
 void CSMain (uint3 id : SV_DispatchThreadID)
 {
-    int index = i3DToi1D(id, crd);
-    float3 newPosition = float3(id.x, id.y, id.z) * time;
+    int index   = i3DToi1D(id, crd);
+    float3 fid  = (id.xyz / crd) * noiseScale + time;
+    float theta = noise(fid.xy) * PI;
+    float phi   = noise(fid.zyx) * TWOPI;
+
+    float3 newPosition = float3(sin(theta) * cos(phi),
+                                sin(theta) * sin(phi),
+                                cos(theta));
+
     Result[index] = newPosition;
 }
